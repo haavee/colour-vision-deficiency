@@ -3,42 +3,54 @@ from PIL import Image, ImageDraw, ImageFont
 import random
 import math
 import sys
+import time
+import numba
+import numpy
+
+@numba.jit(nopython=True)
+def generate_circle_positions(size, min_size, max_size, max_positions, positions):
+    """Generate random positions for circles that will form the pattern."""
+
+    width, height = size
+    current_attempts = 0
+    current_circle = 0
+    while current_circle < max_positions:
+        x = random.randint(0, width)
+        y = random.randint(0, height)
+        size = random.randint(min_size, max_size)
+
+        # Check if the new circle overlaps with existing ones
+        overlap = False
+        for pos in positions:
+            distance = math.sqrt((x - pos[0])**2 + (y - pos[1])**2)
+            if distance < (size + pos[2])/2:
+                overlap = True
+                break
+
+        if not overlap:
+            positions[current_circle, 0] = x
+            positions[current_circle, 1] = y
+            positions[current_circle, 2] = size
+            current_circle += 1
+        current_attempts += 1
+        #sys.stdout.write("{0:6d}/{1:6d} [{2:d}]         \r".format(current_circle, max_positions, current_attempts))
+
+    return positions
 
 class ColorblindTestGenerator:
-    def __init__(self, size=(1280, 1280)):
+    def __init__(self, size=(2480, 3508)):
         """Initialize the generator with given image size."""
         self.size = size
-        self.circle_min_size = 1
-        self.circle_max_size = 20
-    
-    def _generate_circle_positions(self):
-        """Generate random positions for circles that will form the pattern."""
-        positions = []
-        width, height = self.size
-        current_attempts = 0
-        #max_attempts = 12000
-        
-        #while current_attempts < max_attempts and len(positions) < 12000:
-        while len(positions) < 12000:
-            x = random.randint(0, width)
-            y = random.randint(0, height)
-            size = random.randint(self.circle_min_size, self.circle_max_size)
-            
-            # Check if the new circle overlaps with existing ones
-            overlap = False
-            for pos in positions:
-                distance = math.sqrt((x - pos[0])**2 + (y - pos[1])**2)
-                if distance < (size + pos[2])/2:
-                    overlap = True
-                    break
-            
-            if not overlap:
-                positions.append((x, y, size))
-            current_attempts += 1
-            
-        return positions
+        self.circle_min_size = 2
+        self.circle_max_size = 25
+        self.max_positions = 48000
+        self.positions = numpy.zeros((self.max_positions, 3), dtype=numpy.int32)
 
-    def _create_text_mask(self, text, font_size=200):
+    def _generate_circle_positions(self):
+        generate_circle_positions(self.size, self.circle_min_size, self.circle_max_size, self.max_positions, self.positions)
+        return self.positions
+
+    def _create_text_mask(self, text, font_size=500):
         """Create a mask from the input text."""
         # Create a new image with a black background
         mask = Image.new('L', self.size, 0)
@@ -79,12 +91,19 @@ class ColorblindTestGenerator:
         draw = ImageDraw.Draw(image)
         
         # Generate circle positions
+        start = time.time()
         positions = self._generate_circle_positions()
-        
+        end = time.time()
+        print(f"Circle generation time: {end - start:.2f} seconds")
+
         # Create text mask
+        start = time.time()
+
         text_mask = self._create_text_mask(text, font_size)
         text_mask_array = np.array(text_mask)
-        
+        end = time.time()
+        print(f"Mask generation time: {end - start:.2f} seconds")
+
         # Define colors based on test type
         if test_type == "colorblind":
             # Colors that colorblind people will have trouble distinguishing
@@ -94,26 +113,28 @@ class ColorblindTestGenerator:
             # Colors that people with normal vision will have trouble distinguishing
             color1 = (200, 200, 0)   # Yellow
             color2 = (200, 200, 200) # Light gray
-        
+
         # Draw circles with colors based on the text mask
-        for x, y, size in positions:
+        for i in range(positions.shape[0]):
+            x, y, size = positions[i, :]
             # Sample the mask at the circle's position
             mask_value = text_mask_array[min(y, self.size[1]-1), min(x, self.size[0]-1)]
             color = color1 if mask_value > 127 else color2
             draw.ellipse([x-size//2, y-size//2, x+size//2, y+size//2], fill=color)
-        
+
         return image
 
 def main(stem=""):
     # Example usage
     generator = ColorblindTestGenerator()
-    
+
     # Generate a colorblind test
-    colorblind_test = generator.generate_test("ABC", "colorblind")
+
+    colorblind_test = generator.generate_test("GO TO\n\nROOM 2.84\n\nFOR COOKIES", "colorblind")
     colorblind_test.save(f"{stem}_colorblind_test.png")
     
     # Generate an anti-colorblind test
-    anti_colorblind_test = generator.generate_test("123", "anti-colorblind")
+    anti_colorblind_test = generator.generate_test("YUMMY\n\nCOOKIES\n\nIN ROOM\n\n6.12", "anti-colorblind")
     anti_colorblind_test.save(f"{stem}_anti_colorblind_test.png")
 
 if __name__ == "__main__":
