@@ -74,7 +74,7 @@ class ColorblindTestGenerator:
         draw.text((x, y), text, fill=255, font=font)
         return mask
 
-    def generate_test(self, text, test_type="colorblind", font_size=200):
+    def generate_test(self, text, test_type="colorblind", font_size=400):
         """
         Generate a colorblind or anti-colorblind test image.
         
@@ -130,11 +130,11 @@ def main(stem=""):
 
     # Generate a colorblind test
 
-    colorblind_test = generator.generate_test("GO TO\n\nROOM 2.84\n\nFOR COOKIES", "colorblind")
+    colorblind_test = generator.generate_test("GO\n\nTO\n\nROOM 2.84\n\nFOR\n\nCOOKIES", "colorblind")
     colorblind_test.save(f"{stem}_colorblind_test.png")
     
     # Generate an anti-colorblind test
-    anti_colorblind_test = generator.generate_test("YUMMY\n\nCOOKIES\n\nIN ROOM\n\n6.12", "anti-colorblind")
+    anti_colorblind_test = generator.generate_test("YUMMY\n\nCOOKIES\n\nIN\n\nROOM\n\n6.12", "anti-colorblind")
     anti_colorblind_test.save(f"{stem}_anti_colorblind_test.png")
 
 if __name__ == "__main__":
