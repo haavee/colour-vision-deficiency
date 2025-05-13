@@ -9,19 +9,29 @@ import numpy
 
 @numba.jit(nopython=True)
 def generate_circle_positions(size, min_size, max_size, max_positions, positions):
-    """Generate random positions for circles that will form the pattern."""
-
+    """Generate random positions for circles that will form the pattern.
+    First fills the image with larger circles, then progressively uses smaller ones.
+    """
     width, height = size
     current_attempts = 0
     current_circle = 0
-    while current_circle < max_positions:
+    area = 0
+    area_target = width * height
+    # Start with the largest circles and gradually decrease the size
+    size_step = math.sqrt(1.85)
+    current_max_size = max_size
+    current_min_size = current_max_size / size_step
+
+    while current_circle < max_positions and current_min_size >= min_size:
+        # Use the current size range
+        size = int(random.uniform(current_min_size, current_max_size))
         x = random.randint(0, width)
         y = random.randint(0, height)
-        size = random.randint(min_size, max_size)
 
         # Check if the new circle overlaps with existing ones
         overlap = False
-        for pos in positions:
+        for i in range(current_circle):
+            pos = positions[i]
             distance = math.sqrt((x - pos[0])**2 + (y - pos[1])**2)
             if distance < (size + pos[2])/2:
                 overlap = True
@@ -31,9 +41,19 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
             positions[current_circle, 0] = x
             positions[current_circle, 1] = y
             positions[current_circle, 2] = size
+            area += math.pi * size**2
             current_circle += 1
+
         current_attempts += 1
-        #sys.stdout.write("{0:6d}/{1:6d} [{2:d}]         \r".format(current_circle, max_positions, current_attempts))
+
+        # If we've made many attempts without much progress, reduce the size range
+        if current_attempts % 1000 == 0:
+            if area >= area_target/3:
+                current_max_size = current_min_size
+                current_min_size = max(min_size, current_min_size / size_step)
+                # Reset attempt counter when changing size range
+                current_attempts = 0
+                area = 0
 
     return positions
 
