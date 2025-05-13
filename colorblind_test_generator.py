@@ -18,7 +18,7 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
     area = 0
     area_target = width * height
     # Start with the largest circles and gradually decrease the size
-    size_step = math.sqrt(1.85)
+    size_step = math.sqrt(1.4)
     current_max_size = max_size
     current_min_size = current_max_size / size_step
 
@@ -48,7 +48,7 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
 
         # If we've made many attempts without much progress, reduce the size range
         if current_attempts % 1000 == 0:
-            if area >= area_target/3:
+            if area >= (area_target/4):
                 current_max_size = current_min_size
                 current_min_size = max(min_size, current_min_size / size_step)
                 # Reset attempt counter when changing size range
