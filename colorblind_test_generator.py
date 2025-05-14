@@ -6,6 +6,7 @@ import sys
 import time
 import numba
 import numpy
+from enum import Enum
 
 @numba.jit(nopython=True)
 def generate_circle_positions(size, min_size, max_size, max_positions, positions):
@@ -57,6 +58,46 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
 
     return positions
 
+class TestType(Enum):
+    REGULAR_COLORBLIND = "regular_colorblind"  # Standard test - normal vision can see, colorblind struggle
+    REVERSE_COLORBLIND = "reverse_colorblind"  # Reverse test - colorblind can see, normal vision struggles
+    DEUTERANOPIA_TEST = "deuteranopia_test"    # Specific for red-green colorblindness (deuteranopia)
+    PROTANOPIA_TEST = "protanopia_test"        # Specific for red colorblindness (protanopia)
+    TRITANOPIA_TEST = "tritanopia_test"        # Specific for blue-yellow colorblindness (tritanopia)
+
+class ColorPalettes:
+    """Color palettes for different types of colorblind tests."""
+    
+    # Standard Ishihara test colors (normal vision can see, colorblind struggle)
+    REGULAR_COLORBLIND = {
+        "background": [(215, 25, 28), (5, 120, 33)],  # Red, Green - difficult for red-green colorblind
+        "foreground": [(255, 90, 98), (100, 200, 120)]  # Light red, Light green - creates contrast for normal vision
+    }
+    
+    # Reverse test colors (colorblind can see, normal vision struggles)
+    REVERSE_COLORBLIND = {
+        "background": [(200, 200, 0), (200, 200, 200)],  # Yellow, Light gray - similar luminance for normal vision
+        "foreground": [(180, 180, 0), (220, 220, 220)]  # Slightly different yellow and gray - colorblind see contrast
+    }
+    
+    # Specific for deuteranopia (red-green colorblindness)
+    DEUTERANOPIA = {
+        "background": [(0, 128, 128), (128, 128, 0)],  # Teal, Olive - similar for deuteranopes
+        "foreground": [(0, 150, 150), (150, 150, 0)]  # Slightly different teal and olive
+    }
+    
+    # Specific for protanopia (red colorblindness)
+    PROTANOPIA = {
+        "background": [(0, 0, 255), (255, 255, 0)],  # Blue, Yellow - high contrast for protanopes
+        "foreground": [(50, 50, 255), (255, 255, 50)]  # Slightly different blue and yellow
+    }
+    
+    # Specific for tritanopia (blue-yellow colorblindness)
+    TRITANOPIA = {
+        "background": [(255, 0, 0), (0, 255, 0)],  # Red, Green - high contrast for tritanopes
+        "foreground": [(255, 50, 50), (50, 255, 50)]  # Slightly different red and green
+    }
+
 class ColorblindTestGenerator:
     def __init__(self, size=(2480, 3508)):
         """Initialize the generator with given image size."""
@@ -94,13 +135,13 @@ class ColorblindTestGenerator:
         draw.text((x, y), text, fill=255, font=font)
         return mask
 
-    def generate_test(self, text, test_type="colorblind", font_size=400):
+    def generate_test(self, text, test_type=TestType.REGULAR_COLORBLIND, font_size=400):
         """
-        Generate a colorblind or anti-colorblind test image.
+        Generate a colorblind test image based on the specified test type.
         
         Args:
             text (str): The text to display in the test
-            test_type (str): Either "colorblind" or "anti-colorblind"
+            test_type (TestType): The type of colorblind test to generate
             font_size (int): Font size for the text
         
         Returns:
@@ -118,28 +159,62 @@ class ColorblindTestGenerator:
 
         # Create text mask
         start = time.time()
-
         text_mask = self._create_text_mask(text, font_size)
         text_mask_array = np.array(text_mask)
         end = time.time()
         print(f"Mask generation time: {end - start:.2f} seconds")
 
-        # Define colors based on test type
-        if test_type == "colorblind":
-            # Colors that colorblind people will have trouble distinguishing
-            color1 = (5, 120, 33)    # Green
-            color2 = (215, 25, 28)   # Red
-        else:  # anti-colorblind
-            # Colors that people with normal vision will have trouble distinguishing
-            color1 = (200, 200, 0)   # Yellow
-            color2 = (200, 200, 200) # Light gray
-
+        # Get color palette based on test type
+        if isinstance(test_type, str):
+            # For backward compatibility
+            if test_type == "colorblind":
+                palette = ColorPalettes.REGULAR_COLORBLIND
+            elif test_type == "anti-colorblind":
+                palette = ColorPalettes.REVERSE_COLORBLIND
+            else:
+                raise ValueError(f"Unknown test type string: {test_type}")
+        else:
+            # Use the TestType enum
+            if test_type == TestType.REGULAR_COLORBLIND:
+                palette = ColorPalettes.REGULAR_COLORBLIND
+            elif test_type == TestType.REVERSE_COLORBLIND:
+                palette = ColorPalettes.REVERSE_COLORBLIND
+            elif test_type == TestType.DEUTERANOPIA_TEST:
+                palette = ColorPalettes.DEUTERANOPIA
+            elif test_type == TestType.PROTANOPIA_TEST:
+                palette = ColorPalettes.PROTANOPIA
+            elif test_type == TestType.TRITANOPIA_TEST:
+                palette = ColorPalettes.TRITANOPIA
+            else:
+                raise ValueError(f"Unknown test type: {test_type}")
+        
+        # Get background and foreground colors
+        bg_colors = palette["background"]
+        fg_colors = palette["foreground"]
+        
+        # Add some randomness to colors to create more natural looking patterns
+        def randomize_color(color, amount=10):
+            r, g, b = color
+            r = max(0, min(255, r + random.randint(-amount, amount)))
+            g = max(0, min(255, g + random.randint(-amount, amount)))
+            b = max(0, min(255, b + random.randint(-amount, amount)))
+            return (r, g, b)
+        
         # Draw circles with colors based on the text mask
         for i in range(positions.shape[0]):
             x, y, size = positions[i, :]
             # Sample the mask at the circle's position
             mask_value = text_mask_array[min(y, self.size[1]-1), min(x, self.size[0]-1)]
-            color = color1 if mask_value > 127 else color2
+            
+            if mask_value > 127:
+                # Text area - use foreground colors
+                base_color = random.choice(fg_colors)
+            else:
+                # Background area - use background colors
+                base_color = random.choice(bg_colors)
+                
+            # Add slight randomness to colors for more natural look
+            color = base_color #randomize_color(base_color)
             draw.ellipse([x-size//2, y-size//2, x+size//2, y+size//2], fill=color)
 
         return image
@@ -148,14 +223,25 @@ def main(stem=""):
     # Example usage
     generator = ColorblindTestGenerator()
 
-    # Generate a colorblind test
-
-    colorblind_test = generator.generate_test("GO\n\nTO\n\nROOM 2.84\n\nFOR\n\nCOOKIES", "colorblind")
-    colorblind_test.save(f"{stem}_colorblind_test.png")
+    # Generate different types of colorblind tests
     
-    # Generate an anti-colorblind test
-    anti_colorblind_test = generator.generate_test("YUMMY\n\nCOOKIES\n\nIN\n\nROOM\n\n6.12", "anti-colorblind")
-    anti_colorblind_test.save(f"{stem}_anti_colorblind_test.png")
+    # Regular colorblind test (normal vision can see, colorblind struggle)
+    regular_test = generator.generate_test("GO\n\nTO\n\nROOM 2.84\n\nFOR\n\nCOOKIES", TestType.REGULAR_COLORBLIND)
+    regular_test.save(f"{stem}_regular_colorblind_test.png")
+    
+    # Reverse colorblind test (colorblind can see, normal vision struggles)
+    reverse_test = generator.generate_test("YUMMY\n\nCOOKIES\n\nIN\n\nROOM\n\n6.12", TestType.REVERSE_COLORBLIND)
+    reverse_test.save(f"{stem}_reverse_colorblind_test.png")
+    
+    # Specific tests for different types of colorblindness
+    deuteranopia_test = generator.generate_test("DEUTERANOPIA\n\nTEST", TestType.DEUTERANOPIA_TEST)
+    deuteranopia_test.save(f"{stem}_deuteranopia_test.png")
+    
+    protanopia_test = generator.generate_test("PROTANOPIA\n\nTEST", TestType.PROTANOPIA_TEST)
+    protanopia_test.save(f"{stem}_protanopia_test.png")
+    
+    tritanopia_test = generator.generate_test("TRITANOPIA\n\nTEST", TestType.TRITANOPIA_TEST)
+    tritanopia_test.save(f"{stem}_tritanopia_test.png")
 
 if __name__ == "__main__":
     main( sys.argv[1] if len(sys.argv)> 1 else "" )
