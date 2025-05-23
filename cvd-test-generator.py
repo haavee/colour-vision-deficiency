@@ -174,6 +174,7 @@ class ColorblindTestGenerator:
         Returns:
             PIL.Image: The generated test image
         """
+
         # Create the base image
         image = Image.new('RGB', self.size, (255, 255, 255))
         draw = ImageDraw.Draw(image)
@@ -366,4 +367,4 @@ if __name__ == "__main__":
                         default="")
     parser.add_argument('text', nargs='*', help="Text to embed")
     args = parser.parse_args()
-    main(args.text, args.size, args.stem, args.font_file, args.font_size)
+    main('\n'.join(args.text), args.size, args.stem, args.font_file, args.font_size)
