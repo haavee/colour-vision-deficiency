@@ -6,6 +6,8 @@ import sys
 import time
 import numba
 import numpy
+import argparse
+import re
 from enum import Enum
 
 @numba.jit(nopython=True)
@@ -15,17 +17,18 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
     """
     width, height = size
     current_attempts = 0
-    current_circle = 0
-    area = 0
-    area_target = width * height
+    current_circle = last_check_circle = 0
     # Start with the largest circles and gradually decrease the size
     size_step = math.sqrt(1.4)
+    # Try to be smart about the circle size(s)?
+    #max_size         = max(max_size, min(width, height)/40)
+    #min_size         = min(min(min_size, min(width, height)/100), max_size)
     current_max_size = max_size
     current_min_size = current_max_size / size_step
 
     while current_circle < max_positions and current_min_size >= min_size:
         # Use the current size range
-        size = int(random.uniform(current_min_size, current_max_size))
+        size = random.uniform(current_min_size, current_max_size)
         x = random.randint(0, width)
         y = random.randint(0, height)
 
@@ -42,19 +45,21 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
             positions[current_circle, 0] = x
             positions[current_circle, 1] = y
             positions[current_circle, 2] = size
-            area += math.pi * size**2
             current_circle += 1
 
         current_attempts += 1
 
         # If we've made many attempts without much progress, reduce the size range
         if current_attempts % 1000 == 0:
-            if area >= (area_target/4):
+            # if, since the last check (1000 attempts ago) 10 or less circles were added, 
+            # that's a sign it's getting very difficult to find empty spaces. So we 
+            # decrease the circle size and try again
+            if ((current_circle - last_check_circle) <= 10):
                 current_max_size = current_min_size
                 current_min_size = max(min_size, current_min_size / size_step)
                 # Reset attempt counter when changing size range
                 current_attempts = 0
-                area = 0
+            last_check_circle = current_circle
 
     return positions
 
@@ -117,19 +122,22 @@ def randomize_color(color, amount=10):
     return (r, g, b)
 
 class ColorblindTestGenerator:
-    def __init__(self, size=(2480, 3508)):
+    def __init__(self, size, font, font_size):
         """Initialize the generator with given image size."""
         self.size = size
+        self.font_file = font
+        self.font_size = font_size
         self.circle_min_size = 2
-        self.circle_max_size = 25
+        self.circle_max_size = 30#25
         self.max_positions = 48000
         self.positions = numpy.zeros((self.max_positions, 3), dtype=numpy.int32)
 
     def _generate_circle_positions(self):
+        print(f"generating circle positions: size={self.size}, min/max size={self.circle_min_size}/{self.circle_max_size}")
         generate_circle_positions(self.size, self.circle_min_size, self.circle_max_size, self.max_positions, self.positions)
         return self.positions
 
-    def _create_text_mask(self, text, font_size=500, font_file="Junior-like-IKEA.ttf"):
+    def _create_text_mask(self, text, font_size=500): #, font_file="Junior-like-IKEA.ttf"):
         """Create a mask from the input text."""
         # Create a new image with a black background
         mask = Image.new('L', self.size, 0)
@@ -137,8 +145,7 @@ class ColorblindTestGenerator:
 
         # Try to load a system font
         try:
-            #font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
-            font = ImageFont.truetype(font_file, font_size)
+            font = ImageFont.truetype(self.font_file, self.font_size)
         except:
             # Fallback to default font
             print(f"Failed to load {font_file}, loading default")
@@ -155,7 +162,7 @@ class ColorblindTestGenerator:
         draw.text((x, y), text, fill=255, font=font)
         return mask
 
-    def generate_test(self, text, test_type=TestType.REGULAR_COLORBLIND, font_size=400):
+    def generate_test(self, text, test_type=TestType.REGULAR_COLORBLIND):
         """
         Generate a colorblind test image based on the specified test type.
 
@@ -179,7 +186,7 @@ class ColorblindTestGenerator:
 
         # Create text mask
         start = time.time()
-        text_mask = self._create_text_mask(text, font_size)
+        text_mask = self._create_text_mask(text, self.font_size)
         text_mask_array = np.array(text_mask)
         end = time.time()
         print(f"Mask generation time: {end - start:.2f} seconds")
@@ -224,7 +231,7 @@ class ColorblindTestGenerator:
 
         return image
 
-    def generate_tests(self, text, test_types, font_size=400):
+    def generate_tests(self, text, test_types):
         """
         Generate colorblind test images based on the specified test type.
 
@@ -244,7 +251,7 @@ class ColorblindTestGenerator:
 
         # Create text mask
         start = time.time()
-        text_mask = self._create_text_mask(text, font_size)
+        text_mask = self._create_text_mask(text, self.font_size)
         text_mask_array = np.array(text_mask)
         end = time.time()
         print(f"Mask generation time: {end - start:.2f} seconds")
@@ -296,12 +303,19 @@ class ColorblindTestGenerator:
 
         return images
 
-def main(stem=""):
+
+chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+def rand_string(n):
+    return "".join(random.sample(chars, k=n))
+
+def main(text, size, stem, font_file, font_size):
     # Example usage
-    generator = ColorblindTestGenerator()
+    generator = ColorblindTestGenerator(size, font_file, font_size)
 
     # Generate different types of colorblind tests
-    for (tp, img) in generator.generate_tests("TEST\n\nSTRING", [TestType.DEBUG, TestType.REGULAR_COLORBLIND, TestType.REVERSE_COLORBLIND]):
+    #s = "TEST\n\nSTRING"
+    for (tp, img) in generator.generate_tests(text or (rand_string(5)+"\n\n"+rand_string(7)),
+                                              [TestType.DEBUG, TestType.REGULAR_COLORBLIND, TestType.REVERSE_COLORBLIND]):
         img.save(f"{stem}-{tp}.png")
 
     ###### Regular colorblind test (normal vision can see, colorblind struggle)
@@ -326,5 +340,30 @@ def main(stem=""):
     #tritanopia_test = generator.generate_test("TRITANOPIA\n\nTEST", TestType.TRITANOPIA_TEST)
     #tritanopia_test.save(f"{stem}_tritanopia_test.png")
 
+rxSize  = re.compile(r'^((?P<paper>a4(ls)?)|(?P<w>\d+)x(?P<h>\d+))$', re.I).match
+paper_  = { 'a4': (2480, 3840),
+            'a4ls': (3840, 2480) }
+def mk_size_tuple(s):
+    mo = rxSize(s)
+    if not mo:
+        raise ValueError(f"Size '{s}' not a valid size string")
+    paper = mo.group('paper')
+    if paper:
+        return paper_.get(paper)
+    return (int(mo.group('w')), int(mo.group('h')))
+
 if __name__ == "__main__":
-    main( sys.argv[1] if len(sys.argv)> 1 else "" )
+    parser = argparse.ArgumentParser(prog=sys.argv[0],
+                                     description="Colour Vision Deficiency test generator\nCreates filled images with embedded text with random sized dots,using different colour palettes for fore- and background dots, for colour vision deficient (cvd)t test and/or reverse cvd test pattern where a cvd person can read but normal vision fails")
+    parser.add_argument('--font-file', dest='font_file', default="Junior-like-IKEA.ttf",
+                        help="Point at (true type) font file to use for the text")
+    parser.add_argument('--font-size', dest='font_size', default=20, type=int,
+                        help="Font size to use for the text")
+    parser.add_argument('--size', dest='size', default=(480,480),
+                        help="Size of the output image as <width>x<height> pixels. Supports  'a4' for ISO A4 2480x3508",
+                        type=mk_size_tuple)
+    parser.add_argument('--stem', help=r"Provide basename for output file name, outputs will be named {stem}-{test-type}.png",
+                        default="")
+    parser.add_argument('text', nargs='*', help="Text to embed")
+    args = parser.parse_args()
+    main(args.text, args.size, args.stem, args.font_file, args.font_size)
