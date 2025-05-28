@@ -54,12 +54,15 @@ def generate_circle_positions(size, min_size, max_size, max_positions, positions
             # if, since the last check (1000 attempts ago) 10 or less circles were added, 
             # that's a sign it's getting very difficult to find empty spaces. So we 
             # decrease the circle size and try again
-            if ((current_circle - last_check_circle) <= 10):
+            if ((current_circle - last_check_circle) == 0):
                 current_max_size = current_min_size
                 current_min_size = max(min_size, current_min_size / size_step)
                 # Reset attempt counter when changing size range
                 current_attempts = 0
+                if (current_max_size - current_min_size) < (min_size/10):
+                    break
             last_check_circle = current_circle
+        #sys.stdout.write(f"{current_circle}, {last_check_circle} [attempts: {current_attempts}] max/min={current_max_size}/{current_min_size}         \r")
 
     return positions
 
@@ -128,7 +131,7 @@ class ColorblindTestGenerator:
         self.font_file = font
         self.font_size = font_size
         self.circle_min_size = 2
-        self.circle_max_size = 30#25
+        self.circle_max_size = int( max(self.size)/60 )
         self.max_positions = 48000
         self.positions = numpy.zeros((self.max_positions, 3), dtype=numpy.int32)
 
